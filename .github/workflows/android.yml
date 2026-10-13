@@ -1,5 +1,7 @@
 
-name: Android CI
+name: Build APK
+working-directory: android
+run: gradle clean assembleDebug --no-daemon
 
 on:
   workflow_dispatch:
