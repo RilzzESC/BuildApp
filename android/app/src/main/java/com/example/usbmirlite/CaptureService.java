@@ -103,42 +103,105 @@ public class CaptureService extends Service {
         worker.start();
     }
 
-    private void streamLoop() {
-        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        while (running.get()) {
-            Socket client = null;
-            try {
-                if (server == null || server.isClosed()) server = new ServerSocket(PORT);
+    
+private void streamLoop() {
+    MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+
+    android.util.Log.i("UsbMirrorCapture", "Stream thread dimulai");
+
+    while (running.get()) {
+        Socket client = null;
+
+        try {
+            if (server == null || server.isClosed()) {
+                server = new ServerSocket(PORT);
                 server.setSoTimeout(1000);
-                try { client = server.accept(); } catch (java.net.SocketTimeoutException ex) { continue; }
-                client.setTcpNoDelay(true);
-                OutputStream out = client.getOutputStream();
-                // Send codec config and subsequent H.264 access units directly to FFmpeg.
-                while (running.get() && !client.isClosed()) {
-                    int index = encoder.dequeueOutputBuffer(info, 10000);
-                    if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        MediaFormat f = encoder.getOutputFormat();
-                        ByteBuffer csd0 = f.getByteBuffer("csd-0");
-                        ByteBuffer csd1 = f.getByteBuffer("csd-1");
-                        if (csd0 != null) { byte[] b = new byte[csd0.remaining()]; csd0.get(b); out.write(b); }
-                        if (csd1 != null) { byte[] b = new byte[csd1.remaining()]; csd1.get(b); out.write(b); }
-                        out.flush();
-                    } else if (index >= 0) {
+                android.util.Log.i(
+                    "UsbMirrorCapture",
+                    "Server TCP listening pada port " + PORT
+                );
+            }
+
+            try {
+                client = server.accept();
+            } catch (java.net.SocketTimeoutException ex) {
+                continue;
+            }
+
+            client.setTcpNoDelay(true);
+            android.util.Log.i(
+                "UsbMirrorCapture",
+                "Desktop terhubung: " + client.getRemoteSocketAddress()
+            );
+
+            OutputStream out = client.getOutputStream();
+
+            while (running.get() && !client.isClosed()) {
+                int index = encoder.dequeueOutputBuffer(info, 10000);
+
+                if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    MediaFormat f = encoder.getOutputFormat();
+                    ByteBuffer csd0 = f.getByteBuffer("csd-0");
+                    ByteBuffer csd1 = f.getByteBuffer("csd-1");
+
+                    if (csd0 != null) {
+                        byte[] b = new byte[csd0.remaining()];
+                        csd0.get(b);
+                        out.write(b);
+                    }
+
+                    if (csd1 != null) {
+                        byte[] b = new byte[csd1.remaining()];
+                        csd1.get(b);
+                        out.write(b);
+                    }
+
+                    out.flush();
+
+                    android.util.Log.i(
+                        "UsbMirrorCapture",
+                        "Format encoder H.264 tersedia"
+                    );
+
+                } else if (index >= 0) {
+                    try {
                         ByteBuffer buffer = encoder.getOutputBuffer(index);
+
                         if (buffer != null && info.size > 0) {
-                            buffer.position(info.offset); buffer.limit(info.offset + info.size);
-                            byte[] bytes = new byte[info.size]; buffer.get(bytes); out.write(bytes);
+                            buffer.position(info.offset);
+                            buffer.limit(info.offset + info.size);
+
+                            byte[] bytes = new byte[info.size];
+                            buffer.get(bytes);
+                            out.write(bytes);
                         }
+                    } finally {
                         encoder.releaseOutputBuffer(index, false);
                     }
                 }
-            } catch (Exception e) {
-                // Wait for the desktop client to reconnect; keep the projection alive.
-            } finally {
-                if (client != null) try { client.close(); } catch (Exception ignored) {}
+            }
+
+        } catch (Exception e) {
+            if (running.get()) {
+                android.util.Log.e(
+                    "UsbMirrorCapture",
+                    "Kesalahan pada server atau stream video",
+                    e
+                );
+            }
+
+        } finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception ignored) {}
             }
         }
     }
+
+    android.util.Log.i("UsbMirrorCapture", "Stream thread berhenti");
+}
+
 
     private void stopCapture() {
         running.set(false);
