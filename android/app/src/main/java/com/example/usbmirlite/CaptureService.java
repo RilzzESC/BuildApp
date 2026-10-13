@@ -59,7 +59,15 @@ public class CaptureService extends Service {
                 @Override public void onStop() { stopCapture(); stopSelf(); }
             }, null);
             startCapture();
-        } catch (Exception e) { stopSelf(); }
+        } catch (Exception e) {
+            android.util.Log.e(
+                "UsbMirrorCapture",
+                "Gagal memulai MediaProjection atau capture",
+                e
+            );
+            stopCapture();
+            stopSelf();
+        }
         return START_NOT_STICKY;
     }
 
